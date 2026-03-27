@@ -1,0 +1,11 @@
+{
+  "name": "korea-site",
+  "version": "1.0.0",
+  "description": "Korea info site with Naver login",
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}
