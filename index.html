@@ -682,6 +682,72 @@
       footer { padding: 3rem 1.5rem; }
     }
 
+
+    /* ── MEMBER LIST OVERLAY ── */
+    .ml-overlay {
+      position: fixed; inset: 0; z-index: 600;
+      background: rgba(0,0,0,.75); backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+    }
+    .ml-overlay.active { opacity: 1; pointer-events: all; }
+    .ml-card {
+      background: #141414;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 1.4rem;
+      width: 100%; max-width: 700px;
+      max-height: 80vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 32px 80px rgba(0,0,0,.6);
+      overflow: hidden;
+    }
+    .ml-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.3rem 1.8rem;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      flex-shrink: 0;
+    }
+    .ml-title {
+      font-family: 'Noto Serif KR', serif;
+      font-size: 1.1rem; font-weight: 700;
+      display: flex; align-items: center; gap: .7rem;
+    }
+    .ml-cnt {
+      background: var(--red); color: #fff;
+      font-size: .7rem; padding: .15rem .6rem;
+      border-radius: 2rem; font-weight: 700;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .ml-close {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+      color: rgba(255,255,255,.5); font-size: 1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s;
+    }
+    .ml-close:hover { background: rgba(205,46,58,.2); border-color: var(--red); color: var(--red); }
+    .ml-body { overflow-y: auto; padding: 1.2rem 1.8rem 1.8rem; }
+    .ml-table {
+      width: 100%; border-collapse: collapse; font-size: .85rem;
+    }
+    .ml-table th {
+      text-align: left; padding: .65rem .8rem;
+      color: rgba(255,255,255,.35); font-weight: 600; font-size: .72rem;
+      letter-spacing: .07em; border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .ml-table td {
+      padding: .75rem .8rem; color: rgba(255,255,255,.8);
+      border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .ml-table tr:last-child td { border-bottom: none; }
+    .ml-table tr:hover td { background: rgba(255,255,255,.03); }
+    .ml-loading {
+      text-align: center; color: rgba(255,255,255,.3);
+      padding: 2.5rem; font-size: .9rem;
+    }
+
     /* ── NAV REVIEW BUTTON ── */
     .nav-review-btn {
       display: flex; align-items: center; gap: .4rem;
@@ -934,6 +1000,7 @@
       <div class="dropdown-name" id="dropName">사용자</div>
       <div class="dropdown-email" id="dropEmail">email@example.com</div>
       <button class="dropdown-item" onclick="closeDropdownAndOpenProfile()">👤 &nbsp;내 프로필</button>
+      <button class="dropdown-item" onclick="openMemberList()">👥 &nbsp;회원 목록</button>
       <button class="dropdown-item danger" onclick="logout()">🚪 &nbsp;로그아웃</button>
     </div>
   </div>
@@ -1238,6 +1305,28 @@
     <p class="quote-source reveal">— Korea, The Land of the Morning Calm</p>
   </div>
 </section>
+
+<!-- ══════════════════════════════════════════════════════
+     MEMBER LIST OVERLAY  (Firestore 기반 회원 목록)
+════════════════════════════════════════════════════════ -->
+<div class="ml-overlay" id="memberListOverlay">
+  <div class="ml-card">
+    <div class="ml-header">
+      <div class="ml-title">👥 회원 목록 <span class="ml-cnt" id="memberCount"></span></div>
+      <button class="ml-close" onclick="closeMemberList()">✕</button>
+    </div>
+    <div class="ml-body">
+      <table class="ml-table">
+        <thead>
+          <tr><th>#</th><th>이름</th><th>이메일</th><th>가입일</th></tr>
+        </thead>
+        <tbody id="memberListBody">
+          <tr><td colspan="4" class="ml-loading">불러오는 중…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════
      REVIEW DATA PANEL  (로그인 전용)
@@ -1640,31 +1729,25 @@ function goRpPage(p) {
 
 <script>
 /* ══════════════════════════════════════════════════════
-   회원 로그인 / 회원가입 시스템
-   - localStorage: 가입 유저 목록, 세션 유지
-   - sessionStorage: 현재 세션
+   회원 로그인 / 회원가입 시스템  ─  Firebase Auth + Firestore
 ════════════════════════════════════════════════════════ */
 
-const STORAGE_KEY  = 'korea_users';
-const SESSION_KEY  = 'korea_session';
-const REMEMBER_KEY = 'korea_remember';
+const firebaseConfig = {
+  apiKey:            "AIzaSyDoi_W3iD5UuLNLFN_F8v6x2x0GEZ6XtC8",
+  authDomain:        "korea-site.firebaseapp.com",
+  projectId:         "korea-site",
+  storageBucket:     "korea-site.firebasestorage.app",
+  messagingSenderId: "935536100685",
+  appId:             "1:935536100685:web:6c29dc27013116fcc92304",
+  measurementId:     "G-TMG4FHR1MG"
+};
 
-/* ── 유틸 ── */
-function getUsers()  { return JSON.parse(localStorage.getItem(STORAGE_KEY)  || '[]'); }
-function saveUsers(u){ localStorage.setItem(STORAGE_KEY, JSON.stringify(u)); }
-function getSession(){
-  const s = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(REMEMBER_KEY);
-  return s ? JSON.parse(s) : null;
-}
-function saveSession(user, remember){
-  const data = JSON.stringify(user);
-  sessionStorage.setItem(SESSION_KEY, data);
-  if (remember) localStorage.setItem(REMEMBER_KEY, data);
-}
-function clearSession(){
-  sessionStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(REMEMBER_KEY);
-}
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+let _freshLogin  = false;
+let _initialized = false;
 
 /* ── 토스트 ── */
 let _toastTimer;
@@ -1687,7 +1770,6 @@ function openModal(type){
   overlay.classList.add('active');
   document.body.style.overflow = 'hidden';
   clearMessages();
-  // 첫 번째 입력란에 포커스
   setTimeout(() => {
     const first = overlay.querySelector('.modal-card:not([style*="none"]) input');
     if (first) first.focus();
@@ -1719,8 +1801,7 @@ function clearMessages(){
 }
 function resetForms(){
   ['loginForm','registerForm'].forEach(id => {
-    const f = document.getElementById(id);
-    if (f) f.reset();
+    const f = document.getElementById(id); if (f) f.reset();
   });
   document.querySelectorAll('.form-group input').forEach(i => {
     i.classList.remove('invalid','valid');
@@ -1728,8 +1809,7 @@ function resetForms(){
 }
 function setMsg(id, msg, type){
   const el = document.getElementById(id);
-  el.textContent = msg;
-  el.className = 'form-msg ' + type;
+  el.textContent = msg; el.className = 'form-msg ' + type;
 }
 
 /* ── 비밀번호 토글 ── */
@@ -1742,39 +1822,51 @@ function togglePw(inputId, btn){
 
 /* ── 유효성 검사 ── */
 function validateEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); }
-function validatePw(v)   { return v.length >= 8; }
+function validatePw(v)   { return v.length >= 6; }
 function markInput(id, ok){
   const el = document.getElementById(id);
   el.classList.toggle('valid',   ok);
   el.classList.toggle('invalid', !ok);
 }
 
-/* ── 로그인 처리 ── */
-function handleLogin(e){
+/* ── 로그인 처리 (Firebase Auth) ── */
+async function handleLogin(e){
   e.preventDefault();
-  const email  = document.getElementById('loginEmail').value.trim();
-  const pw     = document.getElementById('loginPw').value;
+  const email    = document.getElementById('loginEmail').value.trim();
+  const pw       = document.getElementById('loginPw').value;
   const remember = document.getElementById('rememberMe').checked;
 
   let ok = true;
-  if (!validateEmail(email)){ markInput('loginEmail', false); ok = false; }
-  else markInput('loginEmail', true);
-  if (!pw){ markInput('loginPw', false); ok = false; }
-  else markInput('loginPw', true);
+  if (!validateEmail(email)){ markInput('loginEmail', false); ok = false; } else markInput('loginEmail', true);
+  if (!pw)                  { markInput('loginPw', false);    ok = false; } else markInput('loginPw', true);
   if (!ok){ setMsg('loginMsg','이메일과 비밀번호를 올바르게 입력해 주세요.','error'); return; }
 
-  const users = getUsers();
-  const user  = users.find(u => u.email === email && u.password === btoa(pw));
-  if (!user){ setMsg('loginMsg','이메일 또는 비밀번호가 일치하지 않습니다.','error'); return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = '로그인 중…';
 
-  saveSession(user, remember);
-  applySession(user);
-  closeModal();
-  showToast(`환영합니다, ${user.name}님! 🎉`);
+  try {
+    const persistence = remember
+      ? firebase.auth.Auth.Persistence.LOCAL
+      : firebase.auth.Auth.Persistence.SESSION;
+    await auth.setPersistence(persistence);
+    _freshLogin = true;
+    await auth.signInWithEmailAndPassword(email, pw);
+  } catch(err){
+    _freshLogin = false;
+    const msgs = {
+      'auth/invalid-credential': '이메일 또는 비밀번호가 일치하지 않습니다.',
+      'auth/wrong-password':     '이메일 또는 비밀번호가 일치하지 않습니다.',
+      'auth/user-not-found':     '등록되지 않은 이메일입니다.',
+      'auth/invalid-email':      '이메일 형식이 올바르지 않습니다.',
+      'auth/too-many-requests':  '로그인 시도를 초과했습니다. 잠시 후 다시 시도해 주세요.',
+    };
+    setMsg('loginMsg', msgs[err.code] || `오류: ${err.message}`, 'error');
+    btn.disabled = false; btn.textContent = '로그인';
+  }
 }
 
-/* ── 회원가입 처리 ── */
-function handleRegister(e){
+/* ── 회원가입 처리 (Firebase Auth + Firestore) ── */
+async function handleRegister(e){
   e.preventDefault();
   const name  = document.getElementById('regName').value.trim();
   const email = document.getElementById('regEmail').value.trim();
@@ -1783,59 +1875,51 @@ function handleRegister(e){
   const agree = document.getElementById('agreeTerms').checked;
 
   let ok = true;
-  if (!name){ markInput('regName', false); ok = false; } else markInput('regName', true);
-  if (!validateEmail(email)){ markInput('regEmail', false); ok = false; } else markInput('regEmail', true);
-  if (!validatePw(pw)){ markInput('regPw', false); ok = false; } else markInput('regPw', true);
-  if (pw !== pw2 || !pw2){ markInput('regPwConfirm', false); ok = false; } else markInput('regPwConfirm', true);
-
-  if (!ok){ setMsg('registerMsg','모든 항목을 올바르게 입력해 주세요.','error'); return; }
+  if (!name)                { markInput('regName', false);      ok = false; } else markInput('regName', true);
+  if (!validateEmail(email)){ markInput('regEmail', false);     ok = false; } else markInput('regEmail', true);
+  if (!validatePw(pw))      { markInput('regPw', false);        ok = false; } else markInput('regPw', true);
+  if (pw !== pw2 || !pw2)   { markInput('regPwConfirm', false); ok = false; } else markInput('regPwConfirm', true);
+  if (!ok)  { setMsg('registerMsg','모든 항목을 올바르게 입력해 주세요.','error'); return; }
   if (!agree){ setMsg('registerMsg','이용약관에 동의해 주세요.','error'); return; }
 
-  const users = getUsers();
-  if (users.find(u => u.email === email)){
-    setMsg('registerMsg','이미 사용 중인 이메일입니다.','error');
-    markInput('regEmail', false);
-    return;
+  const btn = document.getElementById('registerBtn');
+  btn.disabled = true; btn.textContent = '가입 중…';
+
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, pw);
+    await cred.user.updateProfile({ displayName: name });
+    await db.collection('users').doc(cred.user.uid).set({
+      name, email, role: 'user',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    _freshLogin = true;
+  } catch(err){
+    const msgs = {
+      'auth/email-already-in-use': '이미 사용 중인 이메일입니다.',
+      'auth/weak-password':        '비밀번호는 6자 이상이어야 합니다.',
+      'auth/invalid-email':        '이메일 형식이 올바르지 않습니다.',
+    };
+    setMsg('registerMsg', msgs[err.code] || `오류: ${err.message}`, 'error');
+    btn.disabled = false; btn.textContent = '가입하기';
   }
-
-  const newUser = { name, email, password: btoa(pw), createdAt: Date.now() };
-  users.push(newUser);
-  saveUsers(users);
-
-  setMsg('registerMsg','🎉 가입 완료! 로그인 화면으로 이동합니다.','success');
-  document.getElementById('registerBtn').disabled = true;
-
-  setTimeout(() => {
-    switchModal('login');
-    document.getElementById('loginEmail').value = email;
-    document.getElementById('registerBtn').disabled = false;
-    setMsg('loginMsg','가입이 완료되었습니다. 로그인해 주세요.','success');
-  }, 1500);
 }
 
 /* ── 세션 적용 (로그인 상태 UI 반영) ── */
 function applySession(user){
-  document.getElementById('navGuest').style.display = 'none';
-  document.getElementById('navReviewBtn').style.display = '';
-  const navUser = document.getElementById('navUser');
-  navUser.style.display = 'flex';
-
-  // 이니셜 아바타
-  const initials = user.name.slice(0, 1).toUpperCase();
-  document.getElementById('navAvatar').textContent    = initials;
-  document.getElementById('navUsername').textContent  = user.name;
-  document.getElementById('dropName').textContent     = user.name;
-  document.getElementById('dropEmail').textContent    = user.email;
+  document.getElementById('navGuest').style.display      = 'none';
+  document.getElementById('navReviewBtn').style.display  = '';
+  document.getElementById('navUser').style.display       = 'flex';
+  const name = user.displayName || user.email.split('@')[0];
+  document.getElementById('navAvatar').textContent   = name.slice(0,1).toUpperCase();
+  document.getElementById('navUsername').textContent = name;
+  document.getElementById('dropName').textContent    = name;
+  document.getElementById('dropEmail').textContent   = user.email;
 }
 
 /* ── 로그아웃 ── */
-function logout(){
-  clearSession();
-  document.getElementById('navGuest').style.display = '';
-  document.getElementById('navUser').style.display  = 'none';
+async function logout(){
   document.getElementById('navUser').classList.remove('open');
-  document.getElementById('navReviewBtn').style.display = 'none';
-  showToast('로그아웃되었습니다.', false);
+  await auth.signOut();
 }
 
 /* ── 소셜 로그인 (데모) ── */
@@ -1844,23 +1928,75 @@ function socialLogin(provider){
   showToast(`${names[provider]} 로그인은 준비 중입니다.`, false);
 }
 
-/* ── 프로필 드롭다운에서 모달 열기 ── */
+/* ── 프로필 ── */
 function closeDropdownAndOpenProfile(){
   document.getElementById('navUser').classList.remove('open');
-  document.getElementById('navReviewBtn').style.display = 'none';
   showToast('프로필 페이지는 준비 중입니다.');
 }
 
-/* ── ESC 키로 모달 닫기 ── */
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeModal();
+/* ── 회원 목록 (Firestore) ── */
+async function openMemberList(){
+  document.getElementById('navUser').classList.remove('open');
+  document.getElementById('memberListOverlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+
+  const tbody = document.getElementById('memberListBody');
+  tbody.innerHTML = '<tr><td colspan="4" class="ml-loading">불러오는 중…</td></tr>';
+
+  try {
+    const snap = await db.collection('users').orderBy('createdAt','desc').get();
+    document.getElementById('memberCount').textContent = snap.size + '명';
+    if (snap.empty){
+      tbody.innerHTML = '<tr><td colspan="4" class="ml-loading">등록된 회원이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = snap.docs.map((doc, i) => {
+      const d    = doc.data();
+      const date = d.createdAt ? d.createdAt.toDate().toLocaleDateString('ko-KR') : '-';
+      return `<tr>
+        <td>${i+1}</td>
+        <td>${d.name  || '-'}</td>
+        <td>${d.email || '-'}</td>
+        <td>${date}</td>
+      </tr>`;
+    }).join('');
+  } catch(err){
+    tbody.innerHTML = `<tr><td colspan="4" class="ml-loading" style="color:#e74c3c">오류: ${err.message}</td></tr>`;
+  }
+}
+function closeMemberList(){
+  document.getElementById('memberListOverlay').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+/* ── Firebase Auth 상태 감지 (핵심) ── */
+auth.onAuthStateChanged(user => {
+  if (user) {
+    applySession(user);
+    closeModal();
+    if (_freshLogin){
+      const name = user.displayName || user.email.split('@')[0];
+      showToast(`환영합니다, ${name}님! 🎉`);
+      _freshLogin = false;
+    }
+    const lb = document.getElementById('loginBtn');
+    const rb = document.getElementById('registerBtn');
+    if (lb){ lb.disabled = false; lb.textContent = '로그인'; }
+    if (rb){ rb.disabled = false; rb.textContent = '가입하기'; }
+  } else {
+    document.getElementById('navGuest').style.display     = '';
+    document.getElementById('navUser').style.display      = 'none';
+    document.getElementById('navUser').classList.remove('open');
+    document.getElementById('navReviewBtn').style.display = 'none';
+    if (_initialized) showToast('로그아웃되었습니다.', false);
+  }
+  _initialized = true;
 });
 
-/* ── 페이지 로드 시 세션 복원 ── */
-(function initSession(){
-  const user = getSession();
-  if (user) applySession(user);
-})();
+/* ── ESC 키 ── */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ closeModal(); closeMemberList(); }
+});
 
 /* ══════════════════════════════════════════════════════
    기존 스크립트
